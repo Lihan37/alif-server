@@ -13,7 +13,13 @@ dotenv.config();
 
 const app = express();
 
-const allowedOrigins = ['http://localhost:5173', 'https://alifrestaurant.netlify.app'];
+const envOrigins = (process.env.CLIENT_URL ?? '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedOrigins = Array.from(
+  new Set(['http://localhost:5173', 'https://alifrestaurant.netlify.app', ...envOrigins])
+);
 
 app.use(express.json());
 app.use(cookieParser());
