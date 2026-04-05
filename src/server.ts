@@ -18,7 +18,7 @@ const envOrigins = (process.env.CLIENT_URL ?? '')
   .map((origin) => origin.trim())
   .filter(Boolean);
 const allowedOrigins = Array.from(
-  new Set(['http://localhost:5173', 'https://alifrestaurant.netlify.app', ...envOrigins])
+  new Set(['http://localhost:5173', 'https://alifrestaurant.netlify.app', 'https://alifrestaurantbd.com', ...envOrigins])
 );
 
 app.use(express.json());
@@ -230,3 +230,4 @@ const startServer = async () => {
 };
 
 startServer();
+

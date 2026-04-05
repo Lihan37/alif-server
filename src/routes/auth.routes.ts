@@ -16,8 +16,20 @@ type UserDoc = {
 };
 
 const router = Router();
-const ADMIN_NUMBER = '01716285196';
+const ADMIN_NUMBERS = new Set(['01716285196', '01956854076']);
 const SALT_ROUNDS = 10;
+const isProduction = process.env.NODE_ENV === 'production';
+const refreshCookieOptions = {
+  httpOnly: true,
+  secure: isProduction,
+  sameSite: isProduction ? 'none' : 'lax',
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+} as const;
+const clearRefreshCookieOptions = {
+  httpOnly: true,
+  secure: isProduction,
+  sameSite: isProduction ? 'none' : 'lax',
+} as const;
 let indexEnsured = false;
 
 const normalizeNumber = (value: string): string => value.replace(/\D/g, '');
@@ -78,7 +90,7 @@ router.post('/signup', async (req, res) => {
     }
 
     const now = new Date();
-    const role: UserRole = cleanNumber === ADMIN_NUMBER ? 'admin' : 'user';
+    const role: UserRole = ADMIN_NUMBERS.has(cleanNumber) ? 'admin' : 'user';
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
     const newUser: OptionalId<UserDoc> = {
@@ -101,12 +113,7 @@ router.post('/signup', async (req, res) => {
     const accessToken = signAccessToken(payload);
     const refreshToken = signRefreshToken(payload);
 
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    res.cookie('refreshToken', refreshToken, refreshCookieOptions);
 
     res.status(201).json({ accessToken, user: payload });
   } catch {
@@ -146,12 +153,7 @@ router.post('/login', async (req, res) => {
     const accessToken = signAccessToken(payload);
     const refreshToken = signRefreshToken(payload);
 
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    res.cookie('refreshToken', refreshToken, refreshCookieOptions);
 
     res.json({ accessToken, user: payload });
   } catch {
@@ -177,11 +179,7 @@ router.post('/refresh', (req, res) => {
 });
 
 router.post('/logout', (_req, res) => {
-  res.clearCookie('refreshToken', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-  });
+  res.clearCookie('refreshToken', clearRefreshCookieOptions);
   res.json({ message: 'Logged out' });
 });
 
