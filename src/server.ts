@@ -56,6 +56,56 @@ const employeesCollection = async () => {
   return collection;
 };
 
+const parseEmployeePayload = (payload: {
+  serial?: number | string;
+  name?: string;
+  number?: string;
+  sectionId?: string;
+}) => {
+  const { serial, name, number, sectionId } = payload;
+
+  if (!name || !sectionId) {
+    return { error: 'name and sectionId are required' as const };
+  }
+
+  const cleanName = name.trim();
+  if (!cleanName) {
+    return { error: 'Name is required' as const };
+  }
+
+  const section = EMPLOYEE_SECTION_MAP[sectionId as EmployeeSectionId];
+  if (!section) {
+    return { error: 'Invalid sectionId' as const };
+  }
+
+  let parsedSerial: number | undefined;
+  if (serial !== undefined && serial !== null && String(serial).trim() !== '') {
+    parsedSerial = Number(serial);
+    if (!Number.isInteger(parsedSerial) || parsedSerial <= 0) {
+      return { error: 'serial must be a positive integer' as const };
+    }
+  }
+
+  let cleanNumber: string | undefined;
+  if (typeof number === 'string' && number.trim()) {
+    cleanNumber = normalizeNumber(number);
+    if (cleanNumber.length < 11) {
+      return { error: 'Valid number is required when provided' as const };
+    }
+  }
+
+  return {
+    value: {
+      serial: parsedSerial,
+      name: cleanName,
+      number: cleanNumber,
+      hall: section.hall,
+      sectionId: section.id,
+      sectionLabel: section.label,
+    },
+  };
+};
+
 app.get('/', (_req, res) => {
   res.send('API Running');
 });
@@ -140,57 +190,22 @@ app.get('/api/admin/employees', authMiddleware, requireRole('admin'), async (_re
 });
 
 app.post('/api/admin/employees', authMiddleware, requireRole('admin'), async (req: AuthRequest, res) => {
-  const { serial, name, number, sectionId } = req.body as {
+  const parsed = parseEmployeePayload(req.body as {
     serial?: number | string;
     name?: string;
     number?: string;
     sectionId?: string;
-  };
+  });
 
-  if (!name || !sectionId) {
-    res.status(400).json({ message: 'name and sectionId are required' });
+  if ('error' in parsed) {
+    res.status(400).json({ message: parsed.error });
     return;
-  }
-
-  const cleanName = name.trim();
-  if (!cleanName) {
-    res.status(400).json({ message: 'Name is required' });
-    return;
-  }
-
-  const section = EMPLOYEE_SECTION_MAP[sectionId as EmployeeSectionId];
-  if (!section) {
-    res.status(400).json({ message: 'Invalid sectionId' });
-    return;
-  }
-
-  let parsedSerial: number | undefined;
-  if (serial !== undefined && serial !== null && String(serial).trim() !== '') {
-    parsedSerial = Number(serial);
-    if (!Number.isInteger(parsedSerial) || parsedSerial <= 0) {
-      res.status(400).json({ message: 'serial must be a positive integer' });
-      return;
-    }
-  }
-
-  let cleanNumber: string | undefined;
-  if (typeof number === 'string' && number.trim()) {
-    cleanNumber = normalizeNumber(number);
-    if (cleanNumber.length < 11) {
-      res.status(400).json({ message: 'Valid number is required when provided' });
-      return;
-    }
   }
 
   try {
     const now = new Date();
     const employee: EmployeeDoc = {
-      serial: parsedSerial,
-      name: cleanName,
-      number: cleanNumber,
-      hall: section.hall,
-      sectionId: section.id,
-      sectionLabel: section.label,
+      ...parsed.value,
       createdBy: req.user?.sub ?? 'unknown',
       createdAt: now,
       updatedAt: now,
@@ -212,6 +227,55 @@ app.post('/api/admin/employees', authMiddleware, requireRole('admin'), async (re
       return;
     }
     res.status(500).json({ message: 'Failed to create employee' });
+  }
+});
+
+app.put('/api/admin/employees/:id', authMiddleware, requireRole('admin'), async (req: AuthRequest, res) => {
+  const rawId = req.params.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
+  if (!id || !ObjectId.isValid(id)) {
+    res.status(400).json({ message: 'Invalid employee id' });
+    return;
+  }
+
+  const parsed = parseEmployeePayload(req.body as {
+    serial?: number | string;
+    name?: string;
+    number?: string;
+    sectionId?: string;
+  });
+
+  if ('error' in parsed) {
+    res.status(400).json({ message: parsed.error });
+    return;
+  }
+
+  try {
+    const collection = await employeesCollection();
+    const employeeId = new ObjectId(id);
+    const result = await collection.findOneAndUpdate(
+      { _id: employeeId },
+      {
+        $set: {
+          ...parsed.value,
+          updatedAt: new Date(),
+        },
+      },
+      { returnDocument: 'after' }
+    );
+
+    if (!result) {
+      res.status(404).json({ message: 'Employee not found' });
+      return;
+    }
+
+    res.json({ employee: result });
+  } catch (error) {
+    if (error instanceof MongoServerError && error.code === 11000) {
+      res.status(409).json({ message: 'Serial already exists' });
+      return;
+    }
+    res.status(500).json({ message: 'Failed to update employee' });
   }
 });
 
