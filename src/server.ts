@@ -279,6 +279,29 @@ app.put('/api/admin/employees/:id', authMiddleware, requireRole('admin'), async 
   }
 });
 
+app.delete('/api/admin/employees/:id', authMiddleware, requireRole('admin'), async (req, res) => {
+  const rawId = req.params.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
+  if (!id || !ObjectId.isValid(id)) {
+    res.status(400).json({ message: 'Invalid employee id' });
+    return;
+  }
+
+  try {
+    const collection = await employeesCollection();
+    const result = await collection.deleteOne({ _id: new ObjectId(id) });
+
+    if (result.deletedCount === 0) {
+      res.status(404).json({ message: 'Employee not found' });
+      return;
+    }
+
+    res.json({ message: 'Employee deleted successfully' });
+  } catch {
+    res.status(500).json({ message: 'Failed to delete employee' });
+  }
+});
+
 const PORT = Number(process.env.PORT) || 5000;
 
 const startServer = async () => {
